@@ -28,12 +28,18 @@ synctest "The API answers over HTTP" {
     fs.delete_file(path + "-wal") _
     fs.delete_file(path + "-shm") _
 
+    // The cache is part of this run when there is a redis to reach
+    let probe = api.Cache.open(TEST_REDIS)
+    let has_redis = probe.enabled
+    probe.close()
+
     let config = api.Config {
         database: path
         host: "127.0.0.1"
         port: TEST_PORT
         secret: "a-secret-for-the-tests"
         session_seconds: 60
+        redis: has_redis ? TEST_REDIS : ""
     }
     // The server runs beside the test, on its own coroutine
     let running = co api.serve(config)
@@ -93,77 +99,30 @@ synctest "The API answers over HTTP" {
     assert(missing.status == 404)
     assert((json.decode(missing.body) !? json.new_null())["error"].string == "not_found")
 
-    api.stop()
-    await running ! {}
-    fs.delete_file(path) _
-    fs.delete_file(path + "-wal") _
-    fs.delete_file(path + "-shm") _
-}
-
-// The redis the tests use, started by `make cache` or already running
-value TEST_REDIS ("127.0.0.1:6399")
-value REDIS_PORT (8432)
-
-synctest "With a cache behind it" {
-    // A redis that is not there is not a reason for the API to stop working, so this test says
-    // what it checked either way
-    let cache = api.Cache.open(TEST_REDIS)
-    let has_redis = cache.enabled
-    cache.close()
-
-    let path = __DIR__ + "/tmp-cache.db"
-    fs.delete_file(path) _
-    fs.delete_file(path + "-wal") _
-    fs.delete_file(path + "-shm") _
-
-    let config = api.Config {
-        database: path
-        host: "127.0.0.1"
-        port: REDIS_PORT
-        secret: "a-secret-for-the-tests"
-        session_seconds: 60
-        redis: has_redis ? TEST_REDIS : ""
-    }
-    let running = co api.serve(config)
-    time.sleep_ms(300)
-
-    let address = "http://127.0.0.1:" + REDIS_PORT
-    let headers = http.Headers { "Content-Type" => "application/json" }
-    // A cache outlives a test run, so every run works on an email of its own
-    let email = "cache-" + time.unix_ms() + "@example.com"
-    let account = "{\"email\":\"" + email + "\",\"password\":\"a-good-password\"}"
-    http.request("POST", address + "/users", http.Options {
-        body: account
-        headers: headers
-    }) ! { println("could not reach the server") assert(false) return }
-
-    let signed_in = http.request("POST", address + "/login", http.Options {
-        body: account
-        headers: headers
-    }) ! { assert(false) return }
-    let token = (json.decode(signed_in.body) !? json.new_null())["token"].string
-
-    let with_token = http.Headers { "Authorization" => "Bearer " + token }
-    // Read twice: the second answer comes from the cache when there is one, and is the same
-    let first = http.request("GET", address + "/me", http.Options { headers: with_token }) ! { assert(false) return }
-    let second = http.request("GET", address + "/me", http.Options { headers: with_token }) ! { assert(false) return }
-    assert(first.status == 200)
-    assert(second.body == first.body)
-
     // Health says whether the cache is there, which is what the program itself believes
-    let health = http.request("GET", address + "/health") ! { assert(false) return }
-    assert((json.decode(health.body) !? json.new_null())["cache"].bool == has_redis)
+    let state_again = json.decode((get_json("/health") ! { assert(false) return }).body) ! { assert(false) return }
+    assert(state_again["cache"].bool == has_redis)
 
     if has_redis {
-        // Six wrong passwords in a minute: the sixth is refused before the password is checked
+        // Reading the same account twice: the second answer comes from the cache and is the same
+        let first = get_json("/me", token) ! { assert(false) return }
+        let second = get_json("/me", token) ! { assert(false) return }
+        assert(first.status == 200)
+        assert(second.body == first.body)
+
+        // Six wrong passwords in a minute: the sixth is refused before the password is checked.
+        // A cache outlives a test run, so this uses an email of its own every time.
+        let limited = "limit-" + time.unix_ms() + "@example.com"
+        let account = "{\"email\":\"" + limited + "\",\"password\":\"a-good-password\"}"
+        post_json("/users", account) ! { assert(false) return }
         let statuses: Array[uint] = .{}
-        let i: uint = 0
-        while i++ < 6 {
-            let attempt = http.request("POST", address + "/login", http.Options {
-                body: "{\"email\":\"" + email + "\",\"password\":\"wrong-password\"}"
-                headers: headers
-            }) ! { assert(false) return }
-            statuses.append(attempt.status.to(uint))
+        let attempt: uint = 0
+        while attempt++ < 6 {
+            let answer = post_json("/login", "{\"email\":\"" + limited + "\",\"password\":\"wrong-password\"}") ! {
+                assert(false)
+                return
+            }
+            statuses.append(answer.status.to(uint))
         }
         assert((statuses.get(0) !? 0) == 401)
         assert((statuses.get(5) !? 0) == 429)
@@ -176,4 +135,23 @@ synctest "With a cache behind it" {
     fs.delete_file(path) _
     fs.delete_file(path + "-wal") _
     fs.delete_file(path + "-shm") _
+}
+
+// The redis the tests use, started by `make cache` or already running
+value TEST_REDIS ("127.0.0.1:6399")
+
+test "A cache that has no redis to reach" {
+    // The program must run without one, so this is what it does instead
+    let cache = api.Cache.open("")
+    assert(!cache.enabled)
+    assert(!isset(cache.get("anything")))
+    cache.set("anything", "value", 60)
+    assert(!isset(cache.get("anything")))
+    assert(!cache.over_limit("anything", 1, 60))
+    cache.close()
+
+    // And an address nothing answers at is the same as none at all
+    let unreachable = api.Cache.open("127.0.0.1:6301")
+    assert(!unreachable.enabled)
+    unreachable.close()
 }

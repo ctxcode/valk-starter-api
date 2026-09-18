@@ -62,6 +62,11 @@ be opened there; it fails with *"Cannot schedule an io_uring operation without a
 `database_for_this_thread()` and `cache_of_this_thread()` open theirs on first use, inside the
 handler.
 
+**A worker thread keeps the globals it started with.** That is what makes the per-thread
+connection work, and it also means a server restarted inside one process is answered by threads
+holding the settings of the one before it — which is why the tests start one server and keep it,
+rather than one per case. A program that serves until it exits never meets this.
+
 **Redis is optional on purpose.** `Cache.open` returns a cache that does nothing when there is
 no redis to reach, so the program starts either way and `/health` says which it is. A cache that
 takes the program down with it is worse than no cache.
