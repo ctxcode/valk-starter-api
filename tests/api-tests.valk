@@ -1,0 +1,179 @@
+use api
+use valk.http
+use valk.json
+use valk.fs
+use valk.time
+
+value TEST_PORT (8431)
+
+fn base() String {
+    return "http://127.0.0.1:" + TEST_PORT
+}
+
+fn post_json(path: String, body: String, token: String ("")) http.ClientResponse !http.HttpError {
+    let headers = http.Headers { "Content-Type" => "application/json" }
+    if token.length > 0 : headers.set("Authorization", "Bearer " + token)
+    return http.request("POST", base() + path, http.Options { body: body, headers: headers }) !>
+}
+
+fn get_json(path: String, token: String ("")) http.ClientResponse !http.HttpError {
+    let headers = http.Headers {}
+    if token.length > 0 : headers.set("Authorization", "Bearer " + token)
+    return http.request("GET", base() + path, http.Options { headers: headers }) !>
+}
+
+synctest "The API answers over HTTP" {
+    let path = __DIR__ + "/tmp-api.db"
+    fs.delete_file(path) _
+    fs.delete_file(path + "-wal") _
+    fs.delete_file(path + "-shm") _
+
+    let config = api.Config {
+        database: path
+        host: "127.0.0.1"
+        port: TEST_PORT
+        secret: "a-secret-for-the-tests"
+        session_seconds: 60
+    }
+    // The server runs beside the test, on its own coroutine
+    let running = co api.serve(config)
+    time.sleep_ms(300)
+
+    // An account, made over the API
+    let created = post_json("/users", "{\"email\":\"ada@example.com\",\"password\":\"a-good-password\"}") ! {
+        println("could not reach the server")
+        assert(false)
+        return
+    }
+    assert(created.status == 201)
+    let user = json.decode(created.body) ! { assert(false) return }
+    let id = user["id"].string
+    assert(id.length == 36)
+    assert(user["email"].string == "ada@example.com")
+
+    // The same email twice is refused, and says why
+    let again = post_json("/users", "{\"email\":\"ada@example.com\",\"password\":\"a-good-password\"}") ! { assert(false) return }
+    assert(again.status == 409)
+    assert((json.decode(again.body) !? json.new_null())["error"].string == "taken")
+
+    // A password that is too short is refused before anything is written
+    let weak = post_json("/users", "{\"email\":\"bob@example.com\",\"password\":\"short\"}") ! { assert(false) return }
+    assert(weak.status == 400)
+
+    // Logging in gives a token
+    let denied = post_json("/login", "{\"email\":\"ada@example.com\",\"password\":\"not-the-password\"}") ! { assert(false) return }
+    assert(denied.status == 401)
+
+    let signed_in = post_json("/login", "{\"email\":\"ada@example.com\",\"password\":\"a-good-password\"}") ! { assert(false) return }
+    assert(signed_in.status == 200)
+    let token = (json.decode(signed_in.body) !? json.new_null())["token"].string
+    assert(token.split(".").length == 3)
+
+    // Which the API reads back
+    let me = get_json("/me", token) ! { assert(false) return }
+    assert(me.status == 200)
+    let who = json.decode(me.body) ! { assert(false) return }
+    assert(who["id"].string == id)
+    assert(who["email"].string == "ada@example.com")
+
+    // No token, and a token nobody signed
+    assert((get_json("/me") ! { assert(false) return }).status == 401)
+    let forged = token.range(0, token.length - 4) + "AAAA"
+    assert((get_json("/me", forged) ! { assert(false) return }).status == 401)
+
+    // Health says what it knows
+    let health = get_json("/health") ! { assert(false) return }
+    assert(health.status == 200)
+    let state = json.decode(health.body) ! { assert(false) return }
+    assert(state["status"].string == "ok")
+    assert(state["users"].int == 1)
+
+    // Anything else is a 404 with a message rather than a stack trace
+    let missing = get_json("/nothing-here") ! { assert(false) return }
+    assert(missing.status == 404)
+    assert((json.decode(missing.body) !? json.new_null())["error"].string == "not_found")
+
+    api.stop()
+    await running ! {}
+    fs.delete_file(path) _
+    fs.delete_file(path + "-wal") _
+    fs.delete_file(path + "-shm") _
+}
+
+// The redis the tests use, started by `make cache` or already running
+value TEST_REDIS ("127.0.0.1:6399")
+value REDIS_PORT (8432)
+
+synctest "With a cache behind it" {
+    // A redis that is not there is not a reason for the API to stop working, so this test says
+    // what it checked either way
+    let cache = api.Cache.open(TEST_REDIS)
+    let has_redis = cache.enabled
+    cache.close()
+
+    let path = __DIR__ + "/tmp-cache.db"
+    fs.delete_file(path) _
+    fs.delete_file(path + "-wal") _
+    fs.delete_file(path + "-shm") _
+
+    let config = api.Config {
+        database: path
+        host: "127.0.0.1"
+        port: REDIS_PORT
+        secret: "a-secret-for-the-tests"
+        session_seconds: 60
+        redis: has_redis ? TEST_REDIS : ""
+    }
+    let running = co api.serve(config)
+    time.sleep_ms(300)
+
+    let address = "http://127.0.0.1:" + REDIS_PORT
+    let headers = http.Headers { "Content-Type" => "application/json" }
+    // A cache outlives a test run, so every run works on an email of its own
+    let email = "cache-" + time.unix_ms() + "@example.com"
+    let account = "{\"email\":\"" + email + "\",\"password\":\"a-good-password\"}"
+    http.request("POST", address + "/users", http.Options {
+        body: account
+        headers: headers
+    }) ! { println("could not reach the server") assert(false) return }
+
+    let signed_in = http.request("POST", address + "/login", http.Options {
+        body: account
+        headers: headers
+    }) ! { assert(false) return }
+    let token = (json.decode(signed_in.body) !? json.new_null())["token"].string
+
+    let with_token = http.Headers { "Authorization" => "Bearer " + token }
+    // Read twice: the second answer comes from the cache when there is one, and is the same
+    let first = http.request("GET", address + "/me", http.Options { headers: with_token }) ! { assert(false) return }
+    let second = http.request("GET", address + "/me", http.Options { headers: with_token }) ! { assert(false) return }
+    assert(first.status == 200)
+    assert(second.body == first.body)
+
+    // Health says whether the cache is there, which is what the program itself believes
+    let health = http.request("GET", address + "/health") ! { assert(false) return }
+    assert((json.decode(health.body) !? json.new_null())["cache"].bool == has_redis)
+
+    if has_redis {
+        // Six wrong passwords in a minute: the sixth is refused before the password is checked
+        let statuses: Array[uint] = .{}
+        let i: uint = 0
+        while i++ < 6 {
+            let attempt = http.request("POST", address + "/login", http.Options {
+                body: "{\"email\":\"" + email + "\",\"password\":\"wrong-password\"}"
+                headers: headers
+            }) ! { assert(false) return }
+            statuses.append(attempt.status.to(uint))
+        }
+        assert((statuses.get(0) !? 0) == 401)
+        assert((statuses.get(5) !? 0) == 429)
+    } else {
+        println("(no redis at " + TEST_REDIS + ", so the cache and the rate limit were not checked)")
+    }
+
+    api.stop()
+    await running ! {}
+    fs.delete_file(path) _
+    fs.delete_file(path + "-wal") _
+    fs.delete_file(path + "-shm") _
+}

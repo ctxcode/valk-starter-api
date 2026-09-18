@@ -1,0 +1,7 @@
+debug
+vendor
+tests/vendor
+api
+*.db
+*.db-wal
+*.db-shm

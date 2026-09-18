@@ -1,0 +1,162 @@
+use valk.http
+use valk.json
+use sql
+use jwt
+
+// The pieces a request needs. Every thread runs the global initializers for itself, so each
+// worker gets its own settings, its own database connection and its own cache — which is what a
+// connection and a cache ask for anyway: one per thread.
+global settings: Config (Config.from_environment())
+// The running server, so that a test or a signal can ask it to stop
+global running_server: ?http.Server (null)
+// Opened on the first request a thread answers, never in the initializer of the global: a
+// worker thread runs those outside any coroutine, and a socket cannot be opened there
+global database: ?sql.Db (null)
+global cache: ?Cache (null)
+
+/// Serves the API until it is asked to stop.
+///
+/// The settings are written to the environment first, so that the worker threads read the same
+/// ones when they start.
++ fn serve(config: Config) !http.HttpError {
+    config.publish()
+    settings = config
+    let server = http.Server.new(config.host, config.port, handle)
+    running_server = server
+    server.start() !>
+}
+
+/// Asks a server started by `serve` on this thread to stop, and waits for it.
++ fn stop(timeout_ms: uint (2000)) {
+    let server = running_server
+    if !isset(server) : return
+    server.shutdown(timeout_ms)
+    running_server = null
+}
+
+/// Answers one request.
++ fn handle(req: http.Request) http.Response {
+    let db = database_for_this_thread() ! {
+        return error_response(503, "database", "The database cannot be opened: " + E.message)
+    }
+
+    if req.path == "/health" && req.method == "GET" : return health(db)
+    if req.path == "/users" && req.method == "POST" : return register(db, req)
+    if req.path == "/login" && req.method == "POST" : return login(db, req)
+    if req.path == "/me" && req.method == "GET" : return me(db, req)
+    return error_response(404, "not_found", "There is nothing at " + req.path)
+}
+
+// GET /health: is the program up, and how many accounts are there
+fn health(db: sql.Db) http.Response {
+    let total = count_users(db) !? 0
+    let answer: Map[json.Value] = .{}
+    answer.set("status", json.new_string("ok"))
+    answer.set("users", json.new_int(total.to(int)))
+    answer.set("cache", json.new_bool(cache_of_this_thread().enabled))
+    return http.Response.json(json.new_object(answer).encode())
+}
+
+// POST /users: make an account
+fn register(db: sql.Db, req: http.Request) http.Response {
+    let body = req.json()
+    let email = body.get("email").string_value() !? ""
+    let password = body.get("password").string_value() !? ""
+
+    let user = create_user(db, email, password) ! {
+        if error_is(E.code, taken) : return error_response(409, "taken", E.message)
+        return error_response(400, "invalid", E.message)
+    }
+    return http.Response.json(user_json(user).encode(), 201)
+}
+
+// POST /login: swap an email and a password for a token
+fn login(db: sql.Db, req: http.Request) http.Response {
+    let body = req.json()
+    let email = body.get("email").string_value() !? ""
+    let password = body.get("password").string_value() !? ""
+
+    // Five tries a minute per email, so a stolen password list is slow to test
+    if cache_of_this_thread().over_limit("login:" + email.lower(), 5, 60) {
+        return error_response(429, "too_many", "Too many attempts; wait a minute")
+    }
+
+    let user = sign_in(db, email, password) ! {
+        // The same answer whether the email or the password was wrong
+        return error_response(401, "denied", "That email and password do not match")
+    }
+
+    let claims: Map[json.Value] = .{}
+    claims.set("sub", json.new_string(user.id))
+    claims.set("email", json.new_string(user.email))
+    let token = jwt.encode(json.new_object(claims), settings.secret, jwt.Algorithm.hs256, settings.session_seconds)
+
+    let answer: Map[json.Value] = .{}
+    answer.set("token", json.new_string(token))
+    answer.set("expires_in", json.new_int(settings.session_seconds.to(int)))
+    return http.Response.json(json.new_object(answer).encode())
+}
+
+// GET /me: who the token says you are
+fn me(db: sql.Db, req: http.Request) http.Response {
+    let token = bearer_token(req)
+    if token.length == 0 : return error_response(401, "no_token", "This needs an Authorization: Bearer header")
+
+    let claims = jwt.decode(token, settings.secret) ! {
+        if error_is(E.code, expired) : return error_response(401, "expired", "Your session has ended")
+        return error_response(401, "denied", "That token is not valid")
+    }
+
+    // The account behind the token, kept in the cache for a moment
+    let id = claims.subject
+    let cached = cache_of_this_thread().get("user:" + id)
+    if isset(cached) : return http.Response.json(cached)
+
+    let user = find_user(db, id) ! {
+        return error_response(503, "database", E.message)
+    }
+    if !isset(user) : return error_response(401, "denied", "That account is gone")
+
+    let body = user_json(user).encode()
+    cache_of_this_thread().set("user:" + id, body, 30)
+    return http.Response.json(body)
+}
+
+fn bearer_token(req: http.Request) String {
+    let value = req.headers().get("Authorization") !? ""
+    if !value.starts_with("Bearer ") : return ""
+    return value.range(7, value.length - 7)
+}
+
+fn user_json(user: User) json.Value {
+    let values: Map[json.Value] = .{}
+    values.set("id", json.new_string(user.id))
+    values.set("email", json.new_string(user.email))
+    values.set("created_at", json.new_string(user.created_at))
+    return json.new_object(values)
+}
+
+fn error_response(code: u16, kind: String, message: String) http.Response {
+    let values: Map[json.Value] = .{}
+    values.set("error", json.new_string(kind))
+    values.set("message", json.new_string(message))
+    return http.Response.json(json.new_object(values).encode(), code)
+}
+
+// One cache per thread, opened the first time that thread answers a request
+fn cache_of_this_thread() Cache {
+    let open = cache
+    if isset(open) : return open
+    let opened = Cache.open(settings.redis)
+    cache = opened
+    return opened
+}
+
+// One connection per thread, opened the first time that thread answers a request
+fn database_for_this_thread() sql.Db !sql.Error {
+    let db = database
+    if isset(db) : return db
+    let opened = open_database(settings.database) !>
+    database = opened
+    return opened
+}

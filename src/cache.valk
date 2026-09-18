@@ -1,0 +1,66 @@
+use redis
+
+/// A place to keep answers that are asked for again and again.
+///
+/// Redis is optional here: a program that is given no redis keeps working, it just asks the
+/// database every time. That is what `enabled` is for.
++ class Cache {
+    con: ?redis.Connection (null)
+    /// Whether there is a redis behind this.
+    ~ enabled: bool (false)
+
+    /// Opens a cache. `address` is `host:port`, or "" for a cache that does nothing.
+    + static fn open(address: String) Cache {
+        if address.length == 0 : return Cache {}
+        let host = address
+        let port: u32 = 6379
+        let colon = address.index_of_byte(':') !? 0
+        if colon > 0 {
+            host = address.range(0, colon)
+            port = (address.range(colon + 1, address.length - colon - 1).to_uint() !? 6379).to(u32)
+        }
+        // A cache that cannot be reached is not a reason to refuse to start
+        let con = redis.connect(host, port) ! return Cache {}
+        return Cache { con: con, enabled: true }
+    }
+
+    /// Returns what was kept under `key`, or null.
+    + fn get(key: String) ?String {
+        let con = this.con
+        if !isset(con) : return null
+        return con.get(key) !? null
+    }
+
+    /// Keeps `value` under `key` for `seconds`.
+    + fn set(key: String, value: String, seconds: uint (60)) {
+        let con = this.con
+        if !isset(con) : return
+        con.set(key, value, seconds) _
+    }
+
+    /// Forgets `key`.
+    + fn forget(key: String) {
+        let con = this.con
+        if !isset(con) : return
+        con.del(key) _
+    }
+
+    /// Counts a request against `key` and returns whether it is over `limit` within `seconds`.
+    ///
+    /// This is the rate limit a login endpoint wants; without redis it never limits.
+    + fn over_limit(key: String, limit: uint, seconds: uint) bool {
+        let con = this.con
+        if !isset(con) : return false
+        let count = con.incr(key) !? 0
+        if count == 1 : con.expire(key, seconds) _
+        return count.to(uint) > limit
+    }
+
+    /// Closes the connection, if there is one.
+    + fn close() {
+        let con = this.con
+        if isset(con) : con.close()
+        this.con = null
+        this.enabled = false
+    }
+}

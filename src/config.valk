@@ -1,0 +1,67 @@
+use cli
+use valk.core
+
+/// Everything the program needs to run.
+///
+/// The server answers on several threads, and a thread starts with its own globals, so the
+/// settings reach the workers through the environment rather than through a value the main
+/// thread happens to hold: `publish` writes them, and every thread reads them back for itself.
++ class Config {
+    /// Where the database file lives.
+    + database: String ("app.db")
+    /// The host the server listens on.
+    + host: String ("127.0.0.1")
+    /// The port the server listens on.
+    + port: u16 (8080)
+    /// The secret that signs and verifies session tokens.
+    + secret: String ("")
+    /// How long a session token is valid, in seconds.
+    + session_seconds: uint (3600)
+    /// `host:port` of a redis to cache in, or "" for none.
+    + redis: String ("")
+
+    /// Reads the settings from what was typed, falling back to the environment.
+    + static fn from(ctx: cli.Context) Config !cli.Error {
+        let secret = ctx.value("secret")
+        if secret.length == 0 : secret = core.getenv("API_SECRET") !? ""
+        if secret.length == 0 {
+            // A token signed with a secret everyone knows protects nothing
+            throw .missing_argument {
+                message: "--secret is required, or set API_SECRET"
+                command: ctx.command.path()
+            }
+        }
+        let redis = ctx.value("redis")
+        if redis.length == 0 : redis = core.getenv("API_REDIS") !? ""
+        return Config {
+            database: ctx.value("database", core.getenv("API_DATABASE") !? "app.db")
+            host: ctx.value("host", "127.0.0.1")
+            port: (ctx.int("port", 8080) !>).to(u16)
+            secret: secret
+            session_seconds: (ctx.int("session-seconds", 3600) !>).to(uint)
+            redis: redis
+        }
+    }
+
+    /// Reads the settings a thread was started with.
+    + static fn from_environment() Config {
+        return Config {
+            database: core.getenv("API_DATABASE") !? "app.db"
+            host: core.getenv("API_HOST") !? "127.0.0.1"
+            port: ((core.getenv("API_PORT") !? "8080").to_uint() !? 8080).to(u16)
+            secret: core.getenv("API_SECRET") !? ""
+            session_seconds: (core.getenv("API_SESSION_SECONDS") !? "3600").to_uint() !? 3600
+            redis: core.getenv("API_REDIS") !? ""
+        }
+    }
+
+    /// Writes the settings where every thread of this process can read them.
+    + fn publish() {
+        core.setenv("API_DATABASE", this.database) _
+        core.setenv("API_HOST", this.host) _
+        core.setenv("API_PORT", this.port.to(String)) _
+        core.setenv("API_SECRET", this.secret) _
+        core.setenv("API_SESSION_SECONDS", this.session_seconds.to(String)) _
+        core.setenv("API_REDIS", this.redis) _
+    }
+}

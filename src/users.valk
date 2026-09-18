@@ -1,0 +1,91 @@
+use sql
+use uuid
+use valk.crypto
+use valk.time
+
+/// A person who can log in.
++ class User {
+    /// The id, a version 7 uuid: time ordered, so rows land next to each other in the index.
+    + id: String
+    /// What they log in with.
+    + email: String
+    /// When the account was made.
+    + created_at: String
+}
+
+/// Thrown by the things a user can do.
++ error UserError (taken, unknown, password, database) payload {
+    message: String
+}
+
+/// Creates a user, and returns it.
+///
+/// The password is hashed with bcrypt; what goes in the database can never be read back.
++ fn create_user(db: sql.Db, email: String, password: String) User !UserError {
+    if email.length == 0 || !email.contains("@") : throw .unknown { message: "'" + email + "' is not an email address" }
+    if password.length < 8 : throw .password { message: "A password needs at least eight characters" }
+
+    let user = User {
+        id: uuid.v7().to_string()
+        email: email.lower()
+        created_at: time.DateTime.now().to_iso8601()
+    }
+    let hash = crypto.bcrypt_hash(password) ! throw .password { message: "Cannot hash the password" }
+
+    db.insert_into("users").values(.{
+        "id" => sql.Value.of(user.id)
+        "email" => sql.Value.of(user.email)
+        "password_hash" => sql.Value.of(hash)
+        "created_at" => sql.Value.of(user.created_at)
+    }).run() ! {
+        if error_is(E.code, constraint) : throw .taken { message: "That email is already taken" }
+        throw .database { message: E.message }
+    }
+    return user
+}
+
+/// Returns the user with this email and password, or throws.
++ fn sign_in(db: sql.Db, email: String, password: String) User !UserError {
+    let row = db.select().from("users").where("email = ?", .{ sql.Value.of(email.lower()) }).one() ! {
+        throw .database { message: E.message }
+    }
+    if !isset(row) : throw .unknown { message: "No account has that email" }
+
+    let hash = (row.get("password_hash") !? sql.Value.null()).to_string()
+    if !crypto.bcrypt_verify(password, hash) : throw .password { message: "That password does not match" }
+    return user_of(row)
+}
+
+/// Returns the user with this id, or null.
++ fn find_user(db: sql.Db, id: String) ?User !UserError {
+    let row = db.select().from("users").where("id = ?", .{ sql.Value.of(id) }).one() ! {
+        throw .database { message: E.message }
+    }
+    if !isset(row) : return null
+    return user_of(row)
+}
+
+/// Returns the users, newest first.
++ fn list_users(db: sql.Db, limit: uint (50)) Array[User] !UserError {
+    let rows = db.select().from("users").order_by("created_at DESC").limit(limit).all() ! {
+        throw .database { message: E.message }
+    }
+    let users = Array[User].new(rows.length)
+    each rows as row : users.append(user_of(row))
+    return users
+}
+
+/// Returns how many users there are.
++ fn count_users(db: sql.Db) uint !UserError {
+    return db.select().from("users").count() ! {
+        throw .database { message: E.message }
+    }
+}
+
+fn user_of(row: Map[sql.Value]) User {
+    return User {
+        id: (row.get("id") !? sql.Value.null()).to_string()
+        email: (row.get("email") !? sql.Value.null()).to_string()
+        created_at: (row.get("created_at") !? sql.Value.null()).to_string()
+    }
+}

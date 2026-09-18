@@ -1,0 +1,88 @@
+use cli
+
+// A small JSON API, built out of the valk packages: cli for the command line, sql and sqlite for
+// storage, redis for caching, jwt for sessions and uuid for ids.
+fn main(args: Array[String]) {
+    let app = cli.App.new("api", "A small JSON API", "0.1.0")
+    app.root.description = "Every command takes --help. The secret that signs session tokens comes from --secret or API_SECRET."
+
+    database_options(app.root)
+
+    let serve_command = cli.Command.new("serve", "Answer requests until stopped")
+    database_options(serve_command)
+    serve_command.option("host", "H", "The address to listen on", "127.0.0.1", "host")
+    serve_command.option("port", "p", "The port to listen on", "8080", "port")
+    serve_command.option("session-seconds", "", "How long a token is valid", "3600", "seconds")
+    serve_command.on_run(fn(ctx: cli.Context) i32 !cli.Error {
+        let config = Config.from(ctx) !>
+        println("Listening on http://" + config.host + ":" + config.port)
+        serve(config) ! {
+            println("The server stopped")
+            return 1
+        }
+        return 0
+    })
+
+    let migrate_command = cli.Command.new("migrate", "Bring the database up to date")
+    database_options(migrate_command)
+    migrate_command.on_run(fn(ctx: cli.Context) i32 !cli.Error {
+        let db = open_database(ctx.value("database", "app.db")) ! {
+            println("error: " + E.message)
+            return 1
+        }
+        defer db.close()
+        println("The database is up to date")
+        return 0
+    })
+
+    let user_command = cli.Command.new("user", "Look after the accounts")
+    let user_create = cli.Command.new("create", "Make an account")
+    database_options(user_create)
+    user_create.argument("email", "The email to log in with", true)
+    user_create.argument("password", "The password to log in with", true)
+    user_create.on_run(fn(ctx: cli.Context) i32 !cli.Error {
+        let db = open_database(ctx.value("database", "app.db")) ! {
+            println("error: " + E.message)
+            return 1
+        }
+        defer db.close()
+        let user = create_user(db, ctx.arg("email"), ctx.arg("password")) ! {
+            println("error: " + E.message)
+            return 1
+        }
+        println("created " + user.email + " as " + user.id)
+        return 0
+    })
+    let user_list = cli.Command.new("list", "List the accounts, newest first")
+    database_options(user_list)
+    user_list.option("limit", "n", "How many to show", "20", "count")
+    user_list.on_run(fn(ctx: cli.Context) i32 !cli.Error {
+        let db = open_database(ctx.value("database", "app.db")) ! {
+            println("error: " + E.message)
+            return 1
+        }
+        defer db.close()
+        let users = list_users(db, (ctx.int("limit", 20) !>).to(uint)) ! {
+            println("error: " + E.message)
+            return 1
+        }
+        each users as user : println(user.created_at + "  " + user.email + "  " + user.id)
+        if users.length == 0 : println("no accounts yet")
+        return 0
+    })
+    user_command.command(user_create)
+    user_command.command(user_list)
+
+    app.root.command(serve_command)
+    app.root.command(migrate_command)
+    app.root.command(user_command)
+    app.add_completion_command()
+    exit(app.run(args))
+}
+
+// The options every command needs to find the database, and the secret that signs tokens
+fn database_options(command: cli.Command) {
+    command.option("database", "d", "The database file", "app.db", "file", "API_DATABASE")
+    command.option("secret", "s", "The secret that signs session tokens", "", "secret", "API_SECRET")
+    command.option("redis", "r", "host:port of a redis to cache in", "", "address", "API_REDIS")
+}
