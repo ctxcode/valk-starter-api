@@ -1,6 +1,6 @@
 {
     "name": "api",
-    "use": "0.7.3",
+    "use": "0.7.4",
     "src": "src",
     "dependencies": {
         "cli": {
