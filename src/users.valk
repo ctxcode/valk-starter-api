@@ -46,7 +46,7 @@ use valk.time
 
 /// Returns the user with this email and password, or throws.
 + fn sign_in(db: sql.Db, email: String, password: String) User !UserError {
-    let row = db.select().from("users").where("email = ?", .{ sql.Value.of(email.lower()) }).one() ! {
+    let row = db.select().from("users").where("email", email.lower()).one() ! {
         throw .database { message: E.message }
     }
     if !isset(row) : throw .unknown { message: "No account has that email" }
@@ -58,7 +58,7 @@ use valk.time
 
 /// Returns the user with this id, or null.
 + fn find_user(db: sql.Db, id: String) ?User !UserError {
-    let row = db.select().from("users").where("id = ?", .{ sql.Value.of(id) }).one() ! {
+    let row = db.select().from("users").where("id", id).one() ! {
         throw .database { message: E.message }
     }
     if !isset(row) : return null
