@@ -49,7 +49,7 @@ in your shell.
 | `src/api.valk` | the request handlers |
 | `migrations/` | the schema, embedded into the program with `#embed_dir` |
 
-## Three things worth copying
+## Worth knowing
 
 **Settings reach the workers through the environment.** The HTTP server answers on several
 threads, and a thread starts with its own globals — a value the main thread holds does not
@@ -61,11 +61,6 @@ The initializer of a global runs outside any coroutine on a worker thread, and a
 be opened there; it fails with *"Cannot schedule an io_uring operation without a coroutine"*.
 `database_for_this_thread()` and `cache_of_this_thread()` open theirs on first use, inside the
 handler.
-
-**A worker thread keeps the globals it started with.** That is what makes the per-thread
-connection work, and it also means a server restarted inside one process is answered by threads
-holding the settings of the one before it — which is why the tests start one server and keep it,
-rather than one per case. A program that serves until it exits never meets this.
 
 **Redis is optional on purpose.** `Cache.open` returns a cache that does nothing when there is
 no redis to reach, so the program starts either way and `/health` says which it is. A cache that
