@@ -54,7 +54,7 @@ fn health(db: sql.Db) http.Response {
     answer.set("status", json.new_string("ok"))
     answer.set("users", json.new_int(total.to(int)))
     answer.set("cache", json.new_bool(cache_of_this_thread().enabled))
-    return http.Response.json(json.new_object(answer).encode())
+    return http.Response.json(json.encode(answer))
 }
 
 // POST /users: make an account
@@ -94,7 +94,7 @@ fn login(db: sql.Db, req: http.Request) http.Response {
     let answer: Map[json.Value] = .{}
     answer.set("token", json.new_string(token))
     answer.set("expires_in", json.new_int(settings.session_seconds.to(int)))
-    return http.Response.json(json.new_object(answer).encode())
+    return http.Response.json(json.encode(answer))
 }
 
 // GET /me: who the token says you are
@@ -140,7 +140,7 @@ fn error_response(code: u16, kind: String, message: String) http.Response {
     let values: Map[json.Value] = .{}
     values.set("error", json.new_string(kind))
     values.set("message", json.new_string(message))
-    return http.Response.json(json.new_object(values).encode(), code)
+    return http.Response.json(json.encode(values), code)
 }
 
 // One cache per thread, opened the first time that thread answers a request

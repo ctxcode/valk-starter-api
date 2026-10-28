@@ -13,7 +13,7 @@ demo of one of them: a command line, a database with migrations, sessions, a cac
 | cache and rate limit | [valk-redis](https://github.com/ctxcode/valk-redis) |
 | the HTTP server and JSON | the standard library |
 
-Requires Valk 0.7.3 or newer, and SQLite on the system. Redis is optional: without it the API
+Requires Valk 0.8.1 or newer, and SQLite on the system. Redis is optional: without it the API
 works, it just asks the database every time and does not rate limit.
 
 ## Running it

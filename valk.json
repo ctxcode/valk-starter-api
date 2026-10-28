@@ -1,43 +1,43 @@
 {
     "name": "api",
-    "use": "0.7.4",
+    "use": "0.8.1",
     "src": "src",
     "dependencies": {
         "cli": {
             "src": "github.com/ctxcode/valk-cli",
             "version": "x.x.x",
-            "current": "0.3.0",
-            "current_hash": "e907aa3f502774f8412b0a79b92482fbcd8f1a4b"
+            "current": "0.3.1",
+            "current_hash": "09d35039bdf8462d39e1be32be4e0a24f74eefe3"
         },
         "sql": {
             "src": "github.com/ctxcode/valk-sql",
             "version": "x.x.x",
-            "current": "0.3.0",
-            "current_hash": "6b972801a9d283d1fe1e9c197d804fc1453522e4"
+            "current": "0.3.1",
+            "current_hash": "3fe4240570c22d2ebf142547d5f76ec3a0f21432"
         },
         "sqlite": {
             "src": "github.com/ctxcode/valk-sqlite",
             "version": "x.x.x",
-            "current": "0.3.0",
-            "current_hash": "47f844413fb5a51055b74722fcb29aa587162f1f"
+            "current": "0.5.1",
+            "current_hash": "d975713bfabc736695cd069471426be285b6bca6"
         },
         "redis": {
             "src": "github.com/ctxcode/valk-redis",
             "version": "x.x.x",
-            "current": "0.2.0",
-            "current_hash": "d25ea34ef14b3fd5f637bb5d37028c1f56bb978c"
+            "current": "0.5.0",
+            "current_hash": "e81c6b07aa26bcd043772c626bad991b87fdd5d9"
         },
         "jwt": {
             "src": "github.com/ctxcode/valk-jwt",
             "version": "x.x.x",
-            "current": "0.1.0",
-            "current_hash": "2dcfe8e998e2d70c5a7b8179031dca82b0bc35ce"
+            "current": "0.3.2",
+            "current_hash": "f5b986ed3780707191f1ad6d31810615d9d54393"
         },
         "uuid": {
             "src": "github.com/ctxcode/valk-uuid",
             "version": "x.x.x",
-            "current": "0.1.0",
-            "current_hash": "9e49b0128eac76257eed65b05771c8fda0045bf0"
+            "current": "0.1.2",
+            "current_hash": "5290edc4bee4a88f0d3f284b899ff554ab35c1b2"
         }
     }
 }
