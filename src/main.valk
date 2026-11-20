@@ -1,7 +1,7 @@
 use cli
 
 // A small JSON API, built out of the valk packages: cli for the command line, sql and sqlite for
-// storage, redis for caching, jwt for sessions and uuid for ids.
+// storage, redis for caching, jwt for sessions, uuid for ids and metrics for Prometheus.
 fn main(args: Array[String]) {
     let app = cli.App.new("api", "A small JSON API", "0.1.0")
     app.root.description = "Every command takes --help. The secret that signs session tokens comes from --secret or API_SECRET."
@@ -50,7 +50,7 @@ fn main(args: Array[String]) {
             println("error: " + E.message)
             return 1
         }
-        println("created " + user.email + " as " + user.id)
+        println("created " + user.email + " as " + user.id.to_string())
         return 0
     })
     let user_list = cli.Command.new("list", "List the accounts, newest first")
@@ -66,7 +66,7 @@ fn main(args: Array[String]) {
             println("error: " + E.message)
             return 1
         }
-        each users as user : println(user.created_at + "  " + user.email + "  " + user.id)
+        each users as user : println(user.created_at + "  " + user.email + "  " + user.id.to_string())
         if users.length == 0 : println("no accounts yet")
         return 0
     })

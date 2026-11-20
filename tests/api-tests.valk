@@ -52,6 +52,7 @@ synctest "The API answers over HTTP" {
         return
     }
     assert(created.status == 201)
+    assert(!created.body.contains("password_hash"))
     let user = json.decode(created.body) ! { assert(false) return }
     let id = user["id"].string
     assert(id.length == 36)
@@ -66,6 +67,11 @@ synctest "The API answers over HTTP" {
     let weak = post_json("/users", "{\"email\":\"bob@example.com\",\"password\":\"short\"}") ! { assert(false) return }
     assert(weak.status == 400)
 
+    // Invalid JSON is refused cleanly
+    let bad_json = post_json("/users", "not-json") ! { assert(false) return }
+    assert(bad_json.status == 400)
+    assert((json.decode(bad_json.body) !? json.new_null())["error"].string == "invalid")
+
     // Logging in gives a token
     let denied = post_json("/login", "{\"email\":\"ada@example.com\",\"password\":\"not-the-password\"}") ! { assert(false) return }
     assert(denied.status == 401)
@@ -78,6 +84,7 @@ synctest "The API answers over HTTP" {
     // Which the API reads back
     let me = get_json("/me", token) ! { assert(false) return }
     assert(me.status == 200)
+    assert(!me.body.contains("password_hash"))
     let who = json.decode(me.body) ! { assert(false) return }
     assert(who["id"].string == id)
     assert(who["email"].string == "ada@example.com")
@@ -94,10 +101,24 @@ synctest "The API answers over HTTP" {
     assert(state["status"].string == "ok")
     assert(state["users"].int == 1)
 
+    // Wrong method on an existing route returns 405 with Allow header
+    let wrong_method = post_json("/health", "{}") ! { assert(false) return }
+    assert(wrong_method.status == 405)
+    assert((json.decode(wrong_method.body) !? json.new_null())["error"].string == "method_not_allowed")
+    assert((wrong_method.headers.get("allow") !? "") == "GET")
+
     // Anything else is a 404 with a message rather than a stack trace
     let missing = get_json("/nothing-here") ! { assert(false) return }
     assert(missing.status == 404)
     assert((json.decode(missing.body) !? json.new_null())["error"].string == "not_found")
+
+    // Prometheus metrics are served by the middleware and count earlier requests
+    let m = get_json("/metrics") ! { assert(false) return }
+    assert(m.status == 200)
+    assert(m.body.contains("http_requests_total"))
+    assert(m.body.contains("http_request_duration_seconds"))
+    assert(m.body.contains("http_requests_total{method=\"POST\",status=\"201\"} 1"))
+    assert(m.body.contains("http_requests_total{method=\"GET\",status=\"404\"} 1"))
 
     // Health says whether the cache is there, which is what the program itself believes
     let state_again = json.decode((get_json("/health") ! { assert(false) return }).body) ! { assert(false) return }
@@ -154,4 +175,36 @@ test "A cache that has no redis to reach" {
     let unreachable = api.Cache.open("127.0.0.1:6301")
     assert(!unreachable.enabled)
     unreachable.close()
+}
+
+test "Users are stored with UUIDv7 ids and Argon2id hashes" {
+    let path = __DIR__ + "/tmp-users.db"
+    fs.delete_file(path) _
+    fs.delete_file(path + "-wal") _
+    fs.delete_file(path + "-shm") _
+
+    let db = api.open_database(path) ! { assert(false) return }
+    let first = api.create_user(db, "Ada@Example.com", "a-good-password") ! { assert(false) return }
+    let second = api.create_user(db, "bob@example.com", "another-password") ! { assert(false) return }
+
+    assert(first.id.version() == 7)
+    assert(first.email == "ada@example.com")
+    assert(!json.encode(first).contains("password_hash"))
+
+    let signed = api.sign_in(db, "ADA@example.com", "a-good-password") ! { assert(false) return }
+    assert(signed.id == first.id)
+
+    let found = api.find_user(db, first.id.to_string()) ! { assert(false) return }
+    assert(isset(found))
+    if isset(found) : assert(found.id == first.id)
+
+    let listed = api.list_users(db, 10) ! { assert(false) return }
+    assert(listed.length == 2)
+    assert((api.count_users(db) !? 0) == 2)
+    assert(second.id.version() == 7)
+
+    db.close()
+    fs.delete_file(path) _
+    fs.delete_file(path + "-wal") _
+    fs.delete_file(path + "-shm") _
 }

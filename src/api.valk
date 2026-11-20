@@ -2,17 +2,54 @@ use valk.http
 use valk.json
 use sql
 use jwt
+use metrics
 
 // The pieces a request needs. Every thread runs the global initializers for itself, so each
-// worker gets its own settings, its own database connection and its own cache — which is what a
-// connection and a cache ask for anyway: one per thread.
+// worker gets its own settings, its own router, its own database connection and its own cache —
+// which is what a connection and a cache ask for anyway: one per thread.
 global settings: Config (Config.from_environment())
+global router: http.Router[fn(sql.Db, http.Request)(http.Response)] (build_router())
 // The running server, so that a test or a signal can ask it to stop
 global running_server: ?http.Server (null)
 // Opened on the first request a thread answers, never in the initializer of the global: a
 // worker thread runs those outside any coroutine, and a socket cannot be opened there
 global database: ?sql.Db (null)
 global cache: ?Cache (null)
+
+class Credentials {
+    email: String ("")
+    password: String ("")
+}
+
+class HealthResponse {
+    status: String
+    users: uint
+    cache: bool
+}
+
+class TokenClaims {
+    sub: String
+    email: String
+}
+
+class LoginResponse {
+    token: String
+    expires_in: uint
+}
+
+class ErrorResponse {
+    kind: String $tag(json: "error")
+    message: String
+}
+
+fn build_router() http.Router[fn(sql.Db, http.Request)(http.Response)] {
+    let r = http.Router[fn(sql.Db, http.Request)(http.Response)].new()
+    r.add("GET", "/health", health)
+    r.add("POST", "/users", register)
+    r.add("POST", "/login", login)
+    r.add("GET", "/me", me)
+    return r
+}
 
 /// Serves the API until it is asked to stop.
 ///
@@ -22,6 +59,7 @@ global cache: ?Cache (null)
     config.publish()
     settings = config
     let server = http.Server.new(config.host, config.port, handle)
+    server.add_middleware(metrics.middleware())
     running_server = server
     server.start() !>
 }
@@ -36,65 +74,68 @@ global cache: ?Cache (null)
 
 /// Answers one request.
 + fn handle(req: http.Request) http.Response {
+    let route = router.find(req.method, req.path) ! {
+        let allowed = router.allowed_methods(req.path)
+        if allowed.length > 0 {
+            return error_response(405, "method_not_allowed", "Method " + req.method + " is not allowed for " + req.path, http.Headers { "Allow" => allowed.join(", ") })
+        }
+        return error_response(404, "not_found", "There is nothing at " + req.path)
+    }
     let db = database_for_this_thread() ! {
         return error_response(503, "database", "The database cannot be opened: " + E.message)
     }
-
-    if req.path == "/health" && req.method == "GET" : return health(db)
-    if req.path == "/users" && req.method == "POST" : return register(db, req)
-    if req.path == "/login" && req.method == "POST" : return login(db, req)
-    if req.path == "/me" && req.method == "GET" : return me(db, req)
-    return error_response(404, "not_found", "There is nothing at " + req.path)
+    return route.handler(db, req)
 }
 
 // GET /health: is the program up, and how many accounts are there
-fn health(db: sql.Db) http.Response {
+fn health(db: sql.Db, req: http.Request) http.Response {
     let total = count_users(db) !? 0
-    let answer: Map[json.Value] = .{}
-    answer.set("status", json.new_string("ok"))
-    answer.set("users", json.new_int(total.to(int)))
-    answer.set("cache", json.new_bool(cache_of_this_thread().enabled))
-    return http.Response.json(json.encode(answer))
+    return http.Response.json(json.encode(HealthResponse {
+        status: "ok"
+        users: total
+        cache: cache_of_this_thread().enabled
+    }))
 }
 
 // POST /users: make an account
 fn register(db: sql.Db, req: http.Request) http.Response {
-    let body = req.json()
-    let email = body.get("email").string_value() !? ""
-    let password = body.get("password").string_value() !? ""
+    let body = json.decode_to[Credentials](req.body) ! {
+        return error_response(400, "invalid", "Request body must be a JSON object")
+    }
 
-    let user = create_user(db, email, password) ! {
+    let user = create_user(db, body.email, body.password) ! {
         if error_is(E.code, taken) : return error_response(409, "taken", E.message)
         return error_response(400, "invalid", E.message)
     }
-    return http.Response.json(user_json(user).encode(), 201)
+    return http.Response.json(json.encode(user), 201)
 }
 
 // POST /login: swap an email and a password for a token
 fn login(db: sql.Db, req: http.Request) http.Response {
-    let body = req.json()
-    let email = body.get("email").string_value() !? ""
-    let password = body.get("password").string_value() !? ""
+    let body = json.decode_to[Credentials](req.body) ! {
+        return error_response(400, "invalid", "Request body must be a JSON object")
+    }
 
     // Five tries a minute per email, so a stolen password list is slow to test
-    if cache_of_this_thread().over_limit("login:" + email.lower(), 5, 60) {
+    if cache_of_this_thread().over_limit("login:" + body.email.lower(), 5, 60) {
         return error_response(429, "too_many", "Too many attempts; wait a minute")
     }
 
-    let user = sign_in(db, email, password) ! {
+    let user = sign_in(db, body.email, body.password) ! {
         // The same answer whether the email or the password was wrong
         return error_response(401, "denied", "That email and password do not match")
     }
 
-    let claims: Map[json.Value] = .{}
-    claims.set("sub", json.new_string(user.id))
-    claims.set("email", json.new_string(user.email))
-    let token = jwt.encode(json.new_object(claims), settings.secret, jwt.Algorithm.hs256, settings.session_seconds)
+    let claims = TokenClaims {
+        sub: user.id.to_string()
+        email: user.email
+    }
+    let token = jwt.encode(json.from(claims), settings.secret, jwt.Algorithm.hs256, settings.session_seconds)
 
-    let answer: Map[json.Value] = .{}
-    answer.set("token", json.new_string(token))
-    answer.set("expires_in", json.new_int(settings.session_seconds.to(int)))
-    return http.Response.json(json.encode(answer))
+    return http.Response.json(json.encode(LoginResponse {
+        token: token
+        expires_in: settings.session_seconds
+    }))
 }
 
 // GET /me: who the token says you are
@@ -117,7 +158,7 @@ fn me(db: sql.Db, req: http.Request) http.Response {
     }
     if !isset(user) : return error_response(401, "denied", "That account is gone")
 
-    let body = user_json(user).encode()
+    let body = json.encode(user)
     cache_of_this_thread().set("user:" + id, body, 30)
     return http.Response.json(body)
 }
@@ -128,19 +169,8 @@ fn bearer_token(req: http.Request) String {
     return value.range(7, value.length - 7)
 }
 
-fn user_json(user: User) json.Value {
-    let values: Map[json.Value] = .{}
-    values.set("id", json.new_string(user.id))
-    values.set("email", json.new_string(user.email))
-    values.set("created_at", json.new_string(user.created_at))
-    return json.new_object(values)
-}
-
-fn error_response(code: u16, kind: String, message: String) http.Response {
-    let values: Map[json.Value] = .{}
-    values.set("error", json.new_string(kind))
-    values.set("message", json.new_string(message))
-    return http.Response.json(json.encode(values), code)
+fn error_response(code: u16, kind: String, message: String, headers: ?http.Headers (null)) http.Response {
+    return http.Response.json(json.encode(ErrorResponse { kind: kind, message: message }), code, headers)
 }
 
 // One cache per thread, opened the first time that thread answers a request

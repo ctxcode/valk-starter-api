@@ -8,7 +8,7 @@ deps:
 test:
 	$(vc) build ./tests --test --run
 lint:
-	$(vc) build ./src --lint
+	$(vc) build ./src --lint --deny-warnings
 cache:
 	docker run -d --name valk-redis-test -p 6399:6379 redis:7-alpine >/dev/null 2>&1 || docker start valk-redis-test >/dev/null
 	@echo "redis listening on 127.0.0.1:6399"

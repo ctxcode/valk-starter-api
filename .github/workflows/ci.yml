@@ -9,7 +9,7 @@ on:
     branches: [ main ]
 
 env:
-  VALK_VERSION: "0.8.1"
+  VALK_VERSION: "0.8.10"
 
 jobs:
   test:
@@ -41,6 +41,9 @@ jobs:
 
       - name: Start the cache
         run: make cache
+
+      - name: Lint
+        run: make lint
 
       - name: Run the tests
         run: make test

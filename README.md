@@ -1,19 +1,20 @@
-
 # valk-starter-api
 
 A small JSON API in [Valk](https://valk-lang.dev), built out of the packages rather than as a
-demo of one of them: a command line, a database with migrations, sessions, a cache and ids.
+demo of one of them: a command line, a database with migrations, sessions, a cache, ids and
+Prometheus metrics.
 
 | what | package |
 | --- | --- |
 | commands, options, help, tab completion | [valk-cli](https://github.com/ctxcode/valk-cli) |
-| storage, migrations, the query builder | [valk-sql](https://github.com/ctxcode/valk-sql) + [valk-sqlite](https://github.com/ctxcode/valk-sqlite) |
+| storage, migrations, query builder, row mapping | [valk-sql](https://github.com/ctxcode/valk-sql) + [valk-sqlite](https://github.com/ctxcode/valk-sqlite) |
 | session tokens | [valk-jwt](https://github.com/ctxcode/valk-jwt) |
 | account ids | [valk-uuid](https://github.com/ctxcode/valk-uuid) |
 | cache and rate limit | [valk-redis](https://github.com/ctxcode/valk-redis) |
-| the HTTP server and JSON | the standard library |
+| Prometheus HTTP metrics (`/metrics`) | [valk-metrics](https://github.com/ctxcode/valk-metrics) |
+| HTTP server, router, Argon2id, JSON | the standard library |
 
-Requires Valk 0.8.1 or newer, and SQLite on the system. Redis is optional: without it the API
+Requires Valk 0.8.10 or newer, and SQLite on the system. Redis is optional: without it the API
 works, it just asks the database every time and does not rate limit.
 
 ## Running it
@@ -32,6 +33,7 @@ curl -s localhost:8080/health
 curl -s -XPOST localhost:8080/users -d '{"email":"bob@example.com","password":"a-good-password"}'
 TOKEN=$(curl -s -XPOST localhost:8080/login -d '{"email":"bob@example.com","password":"a-good-password"}' | jq -r .token)
 curl -s localhost:8080/me -H "Authorization: Bearer $TOKEN"
+curl -s localhost:8080/metrics
 ```
 
 `./api completion bash` prints the script that completes the commands, options and their values
@@ -44,9 +46,9 @@ in your shell.
 | `src/main.valk` | the commands: `serve`, `migrate`, `user create`, `user list` |
 | `src/config.valk` | the settings, and how they reach the worker threads |
 | `src/store.valk` | opening the database and running the embedded migrations |
-| `src/users.valk` | making, finding and listing accounts; bcrypt passwords |
+| `src/users.valk` | making, finding and listing accounts with `sql.row_to` / `sql.values_of`, `uuid.Uuid`, and Argon2id passwords |
 | `src/cache.valk` | redis, and what to do when there is none |
-| `src/api.valk` | the request handlers |
+| `src/api.valk` | `http.Router`, typed JSON DTOs, request handlers, and `valk-metrics` middleware |
 | `migrations/` | the schema, embedded into the program with `#embed_dir` |
 
 ## Worth knowing
@@ -69,7 +71,7 @@ takes the program down with it is worse than no cache.
 ## Tests
 
 `make test` builds the program, starts it on a port of its own, and talks to it over HTTP:
-making an account, the same email twice, a password that is too short, logging in, reading `/me`
-with the token and with a forged one, `/health`, and a path that is not there. With a redis
-running (`make cache`) it also checks that `/me` is cached and that six wrong passwords in a
-minute are refused.
+making an account, the same email twice, a password that is too short, invalid JSON, logging in,
+reading `/me` with the token and with a forged one, `/health`, `/metrics`, a wrong method (405),
+and a path that is not there (404). With a redis running (`make cache`) it also checks that `/me`
+is cached and that six wrong passwords in a minute are refused.
