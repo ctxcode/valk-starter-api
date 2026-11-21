@@ -208,3 +208,48 @@ test "Users are stored with UUIDv7 ids and Argon2id hashes" {
     fs.delete_file(path + "-wal") _
     fs.delete_file(path + "-shm") _
 }
+
+test "UserError variants carry their kind and message" {
+    let path = __DIR__ + "/tmp-user-errors.db"
+    fs.delete_file(path) _
+    fs.delete_file(path + "-wal") _
+    fs.delete_file(path + "-shm") _
+
+    let db = api.open_database(path) ! { assert(false) return }
+    api.create_user(db, "ada@example.com", "a-good-password") ! { assert(false) return }
+
+    let saw_taken = false
+    api.create_user(db, "ada@example.com", "a-good-password") ! {
+        saw_taken = E is .taken && E.to_string() == E.message && E.message.contains("taken")
+    }
+    assert(saw_taken)
+
+    let saw_unknown = false
+    api.create_user(db, "not-an-email", "a-good-password") ! {
+        saw_unknown = E is .unknown && E.to_string() == E.message
+    }
+    assert(saw_unknown)
+
+    let saw_password = false
+    api.create_user(db, "bob@example.com", "short") ! {
+        saw_password = E is .password && E.to_string() == E.message
+    }
+    assert(saw_password)
+
+    let saw_wrong_pw = false
+    api.sign_in(db, "ada@example.com", "wrong-password") ! {
+        saw_wrong_pw = E is .password && E.to_string() == E.message
+    }
+    assert(saw_wrong_pw)
+
+    let saw_missing = false
+    api.sign_in(db, "nobody@example.com", "a-good-password") ! {
+        saw_missing = E is .unknown && E.to_string() == E.message
+    }
+    assert(saw_missing)
+
+    db.close()
+    fs.delete_file(path) _
+    fs.delete_file(path + "-wal") _
+    fs.delete_file(path + "-shm") _
+}

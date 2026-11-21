@@ -6,7 +6,7 @@ use sqlite
 /// The migrations are embedded, so the program carries its own schema and needs no files where
 /// it runs.
 + fn open_database(path: String) sql.Db !sql.Error {
-    let con = sqlite.open(path) ! throw .connect { message: "Cannot open " + path + ": " + E.message }
+    let con = sqlite.open(path) ! throw .connect("Cannot open " + path + ": " + E.message, "", "")
     let db = sqlite.database(con)
     migrate(db) !>
     return db

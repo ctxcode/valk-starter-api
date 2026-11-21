@@ -16,18 +16,34 @@ use valk.time
 }
 
 /// Thrown by the things a user can do.
-+ error UserError (taken, unknown, password, database) payload {
-    message: String
++ union UserError {
+    taken(String)
+    unknown(String)
+    password(String)
+    database(String)
+
+    + get message: String {
+        return match this : String {
+            .taken(msg) => msg
+            .unknown(msg) => msg
+            .password(msg) => msg
+            .database(msg) => msg
+        }
+    }
+
+    + fn to_string() String $auto {
+        return this.message
+    }
 }
 
 /// Creates a user, and returns it.
 ///
 /// The password is hashed with Argon2id; what goes in the database can never be read back.
 + fn create_user(db: sql.Db, email: String, password: String) User !UserError {
-    if email.length == 0 || !email.contains("@") : throw .unknown { message: "'" + email + "' is not an email address" }
-    if password.length < 8 : throw .password { message: "A password needs at least eight characters" }
+    if email.length == 0 || !email.contains("@") : throw .unknown("'" + email + "' is not an email address")
+    if password.length < 8 : throw .password("A password needs at least eight characters")
 
-    let hash = crypto.argon2id_hash(password) ! throw .password { message: "Cannot hash the password" }
+    let hash = crypto.argon2id_hash(password) ! throw .password("Cannot hash the password")
     let user = User {
         id: uuid.v7()
         email: email.lower()
@@ -36,8 +52,8 @@ use valk.time
     }
 
     db.insert_into("users").values(sql.values_of(user)).run() ! {
-        if error_is(E.code, constraint) : throw .taken { message: "That email is already taken" }
-        throw .database { message: E.message }
+        if E is .constraint : throw .taken("That email is already taken")
+        throw .database(E.message)
     }
     return user
 }
@@ -45,35 +61,35 @@ use valk.time
 /// Returns the user with this email and password, or throws.
 + fn sign_in(db: sql.Db, email: String, password: String) User !UserError {
     let row = db.select().from("users").where("email", email.lower()).one() ! {
-        throw .database { message: E.message }
+        throw .database(E.message)
     }
-    if !isset(row) : throw .unknown { message: "No account has that email" }
+    if !isset(row) : throw .unknown("No account has that email")
 
-    let user = sql.row_to[User](row) ! throw .database { message: E.message }
-    if !crypto.argon2id_verify(password, user.password_hash) : throw .password { message: "That password does not match" }
+    let user = sql.row_to[User](row) ! throw .database(E.message)
+    if !crypto.argon2id_verify(password, user.password_hash) : throw .password("That password does not match")
     return user
 }
 
 /// Returns the user with this id, or null.
 + fn find_user(db: sql.Db, id: String) ?User !UserError {
     let row = db.select().from("users").where("id", id).one() ! {
-        throw .database { message: E.message }
+        throw .database(E.message)
     }
     if !isset(row) : return null
-    return sql.row_to[User](row) ! throw .database { message: E.message }
+    return sql.row_to[User](row) ! throw .database(E.message)
 }
 
 /// Returns the users, newest first.
 + fn list_users(db: sql.Db, limit: uint (50)) Array[User] !UserError {
     let rows = db.select().from("users").order_by("created_at DESC").limit(limit).all() ! {
-        throw .database { message: E.message }
+        throw .database(E.message)
     }
-    return sql.rows_to[User](rows) ! throw .database { message: E.message }
+    return sql.rows_to[User](rows) ! throw .database(E.message)
 }
 
 /// Returns how many users there are.
 + fn count_users(db: sql.Db) uint !UserError {
     return db.select().from("users").count() ! {
-        throw .database { message: E.message }
+        throw .database(E.message)
     }
 }

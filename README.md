@@ -14,7 +14,7 @@ Prometheus metrics.
 | Prometheus HTTP metrics (`/metrics`) | [valk-metrics](https://github.com/ctxcode/valk-metrics) |
 | HTTP server, router, Argon2id, JSON | the standard library |
 
-Requires Valk 0.8.10 or newer, and SQLite on the system. Redis is optional: without it the API
+Requires Valk 0.9.1 or newer, and SQLite on the system. Redis is optional: without it the API
 works, it just asks the database every time and does not rate limit.
 
 ## Running it

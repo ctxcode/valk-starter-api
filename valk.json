@@ -1,49 +1,49 @@
 {
     "name": "api",
-    "use": "0.8.10",
+    "use": "0.9.1",
     "src": "src",
     "dependencies": {
         "cli": {
             "src": "github.com/ctxcode/valk-cli",
-            "version": "x.x.x",
-            "current": "0.3.1",
-            "current_hash": "09d35039bdf8462d39e1be32be4e0a24f74eefe3"
+            "version": "0.4.x",
+            "current": "0.4.0",
+            "current_hash": "819f8dceab4317233f8e608837df787369461efe"
         },
         "sql": {
             "src": "github.com/ctxcode/valk-sql",
-            "version": "x.x.x",
-            "current": "0.4.0",
-            "current_hash": "ea044c647953332eb53d69e1d168a48af1386daa"
+            "version": "0.5.x",
+            "current": "0.5.0",
+            "current_hash": "e5668f1ee7f5e68edbac2bd9899d0cd325f5612f"
         },
         "sqlite": {
             "src": "github.com/ctxcode/valk-sqlite",
-            "version": "x.x.x",
-            "current": "0.6.0",
-            "current_hash": "0ec04ad2d26277ce8afe781cdf0f11aa1e111359"
+            "version": "0.7.x",
+            "current": "0.7.0",
+            "current_hash": "c4143100ee4a7cffef9b342b68db0e7034d14e1b"
         },
         "redis": {
             "src": "github.com/ctxcode/valk-redis",
-            "version": "x.x.x",
-            "current": "0.6.0",
-            "current_hash": "b647539c36ed28887a26556a5b89f490cdac2094"
+            "version": "0.7.x",
+            "current": "0.7.0",
+            "current_hash": "91ce5f24fff2b5c5db719ecc4467f4f197c1af67"
         },
         "jwt": {
             "src": "github.com/ctxcode/valk-jwt",
-            "version": "x.x.x",
-            "current": "0.4.0",
-            "current_hash": "dfd4da3149248df025f78b21a7dc2b01f7cebf8a"
+            "version": "0.5.x",
+            "current": "0.5.0",
+            "current_hash": "5548eb128152c35f52c2bb0440c58c3da23b2aa2"
         },
         "uuid": {
             "src": "github.com/ctxcode/valk-uuid",
-            "version": "x.x.x",
-            "current": "0.2.0",
-            "current_hash": "9141c7009be2a889d5a46931b4317f8327d359de"
+            "version": "0.3.x",
+            "current": "0.3.0",
+            "current_hash": "fd8048e15ec2889aab2737981ca00b5befeb1986"
         },
         "metrics": {
             "src": "github.com/ctxcode/valk-metrics",
-            "version": "x.x.x",
-            "current": "0.1.1",
-            "current_hash": "a6eb84cedb1e299163d9b588dc60cab55f226278"
+            "version": "0.1.x",
+            "current": "0.1.2",
+            "current_hash": "29698bfa5ee4288b007897c29730b233a57b0a48"
         }
     }
 }

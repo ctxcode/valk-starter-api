@@ -26,10 +26,7 @@ use valk.core
         if secret.length == 0 : secret = core.getenv("API_SECRET") !? ""
         if secret.length == 0 {
             // A token signed with a secret everyone knows protects nothing
-            throw .missing_argument {
-                message: "--secret is required, or set API_SECRET"
-                command: ctx.command.path()
-            }
+            throw .missing_argument("--secret is required, or set API_SECRET", ctx.command.path())
         }
         let redis = ctx.value("redis")
         if redis.length == 0 : redis = core.getenv("API_REDIS") !? ""

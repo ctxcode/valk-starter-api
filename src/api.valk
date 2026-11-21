@@ -104,7 +104,7 @@ fn register(db: sql.Db, req: http.Request) http.Response {
     }
 
     let user = create_user(db, body.email, body.password) ! {
-        if error_is(E.code, taken) : return error_response(409, "taken", E.message)
+        if E is .taken : return error_response(409, "taken", E.message)
         return error_response(400, "invalid", E.message)
     }
     return http.Response.json(json.encode(user), 201)
@@ -144,7 +144,7 @@ fn me(db: sql.Db, req: http.Request) http.Response {
     if token.length == 0 : return error_response(401, "no_token", "This needs an Authorization: Bearer header")
 
     let claims = jwt.decode(token, settings.secret) ! {
-        if error_is(E.code, expired) : return error_response(401, "expired", "Your session has ended")
+        if E is .expired : return error_response(401, "expired", "Your session has ended")
         return error_response(401, "denied", "That token is not valid")
     }
 

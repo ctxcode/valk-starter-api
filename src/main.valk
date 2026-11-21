@@ -3,7 +3,7 @@ use cli
 // A small JSON API, built out of the valk packages: cli for the command line, sql and sqlite for
 // storage, redis for caching, jwt for sessions, uuid for ids and metrics for Prometheus.
 fn main(args: Array[String]) {
-    let app = cli.App.new("api", "A small JSON API", "0.1.0")
+    let app = cli.App.new("api", "A small JSON API", "0.2.0")
     app.root.description = "Every command takes --help. The secret that signs session tokens comes from --secret or API_SECRET."
 
     database_options(app.root)
