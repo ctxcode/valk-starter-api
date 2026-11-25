@@ -1,13 +1,13 @@
 {
     "name": "api",
-    "use": "0.9.1",
+    "use": "0.10.0",
     "src": "src",
     "dependencies": {
         "cli": {
             "src": "github.com/ctxcode/valk-cli",
             "version": "0.4.x",
-            "current": "0.4.0",
-            "current_hash": "819f8dceab4317233f8e608837df787369461efe"
+            "current": "0.4.1",
+            "current_hash": "80d2d264dd55a0caf8fcb5e07dd00cff798d826e"
         },
         "sql": {
             "src": "github.com/ctxcode/valk-sql",
@@ -18,8 +18,8 @@
         "sqlite": {
             "src": "github.com/ctxcode/valk-sqlite",
             "version": "0.7.x",
-            "current": "0.7.0",
-            "current_hash": "c4143100ee4a7cffef9b342b68db0e7034d14e1b"
+            "current": "0.7.1",
+            "current_hash": "61c8c0c96eca9996b5dce0f895258c7185d8c58e"
         },
         "redis": {
             "src": "github.com/ctxcode/valk-redis",
@@ -30,8 +30,8 @@
         "jwt": {
             "src": "github.com/ctxcode/valk-jwt",
             "version": "0.5.x",
-            "current": "0.5.0",
-            "current_hash": "5548eb128152c35f52c2bb0440c58c3da23b2aa2"
+            "current": "0.5.1",
+            "current_hash": "0846b102bf319c7da1424230e0db6c54cddae3dd"
         },
         "uuid": {
             "src": "github.com/ctxcode/valk-uuid",
