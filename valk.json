@@ -4,43 +4,43 @@
     "src": "src",
     "dependencies": {
         "cli": {
-            "src": "github.com/ctxcode/valk-cli",
+            "src": "github.com/zikue/valk-cli",
             "version": "0.4.x",
             "current": "0.4.1",
             "current_hash": "80d2d264dd55a0caf8fcb5e07dd00cff798d826e"
         },
         "sql": {
-            "src": "github.com/ctxcode/valk-sql",
+            "src": "github.com/zikue/valk-sql",
             "version": "0.5.x",
             "current": "0.5.0",
             "current_hash": "e5668f1ee7f5e68edbac2bd9899d0cd325f5612f"
         },
         "sqlite": {
-            "src": "github.com/ctxcode/valk-sqlite",
+            "src": "github.com/zikue/valk-sqlite",
             "version": "0.7.x",
             "current": "0.7.1",
             "current_hash": "61c8c0c96eca9996b5dce0f895258c7185d8c58e"
         },
         "redis": {
-            "src": "github.com/ctxcode/valk-redis",
+            "src": "github.com/zikue/valk-redis",
             "version": "0.7.x",
             "current": "0.7.0",
             "current_hash": "91ce5f24fff2b5c5db719ecc4467f4f197c1af67"
         },
         "jwt": {
-            "src": "github.com/ctxcode/valk-jwt",
+            "src": "github.com/zikue/valk-jwt",
             "version": "0.5.x",
             "current": "0.5.1",
             "current_hash": "0846b102bf319c7da1424230e0db6c54cddae3dd"
         },
         "uuid": {
-            "src": "github.com/ctxcode/valk-uuid",
+            "src": "github.com/zikue/valk-uuid",
             "version": "0.3.x",
             "current": "0.3.0",
             "current_hash": "fd8048e15ec2889aab2737981ca00b5befeb1986"
         },
         "metrics": {
-            "src": "github.com/ctxcode/valk-metrics",
+            "src": "github.com/zikue/valk-metrics",
             "version": "0.1.x",
             "current": "0.1.2",
             "current_hash": "29698bfa5ee4288b007897c29730b233a57b0a48"

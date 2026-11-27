@@ -6,12 +6,12 @@ Prometheus metrics.
 
 | what | package |
 | --- | --- |
-| commands, options, help, tab completion | [valk-cli](https://github.com/ctxcode/valk-cli) |
-| storage, migrations, query builder, row mapping | [valk-sql](https://github.com/ctxcode/valk-sql) + [valk-sqlite](https://github.com/ctxcode/valk-sqlite) |
-| session tokens | [valk-jwt](https://github.com/ctxcode/valk-jwt) |
-| account ids | [valk-uuid](https://github.com/ctxcode/valk-uuid) |
-| cache and rate limit | [valk-redis](https://github.com/ctxcode/valk-redis) |
-| Prometheus HTTP metrics (`/metrics`) | [valk-metrics](https://github.com/ctxcode/valk-metrics) |
+| commands, options, help, tab completion | [valk-cli](https://github.com/zikue/valk-cli) |
+| storage, migrations, query builder, row mapping | [valk-sql](https://github.com/zikue/valk-sql) + [valk-sqlite](https://github.com/zikue/valk-sqlite) |
+| session tokens | [valk-jwt](https://github.com/zikue/valk-jwt) |
+| account ids | [valk-uuid](https://github.com/zikue/valk-uuid) |
+| cache and rate limit | [valk-redis](https://github.com/zikue/valk-redis) |
+| Prometheus HTTP metrics (`/metrics`) | [valk-metrics](https://github.com/zikue/valk-metrics) |
 | HTTP server, router, Argon2id, JSON | the standard library |
 
 Requires Valk 0.10.0 or newer, and SQLite on the system. Redis is optional: without it the API
